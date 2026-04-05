@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chess Game (Check + Checkmate)</title>
+
+<style>
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: sans-serif;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(8, 60px);
+    grid-template-rows: repeat(8, 60px);
+    margin-top: 20px;
+  }
+
+  .cell {
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    cursor: pointer;
+  }
+
+  .white { background: #eee; }
+  .black { background: #666; color: white; }
+
+  .highlight {
+    background: #4CAF50 !important;
+  }
+</style>
+</head>
+
+<body>
+
+<h2 id="turn">White's Turn</h2>
+<div id="board"></div>
+
+<script>
+const pieces = {
+  w_king: "♔", w_queen: "♕", w_rook: "♖", w_bishop: "♗", w_knight: "♘", w_pawn: "♙",
+  b_king: "♚", b_queen: "♛", b_rook: "♜", b_bishop: "♝", b_knight: "♞", b_pawn: "♟"
+};
+
+let board = [];
+let selected = null;
+let turn = "w";
+let highlights = [];
+
+function initBoard() {
+  board = [
+    ["b_rook","b_knight","b_bishop","b_queen","b_king","b_bishop","b_knight","b_rook"],
+    ["b_pawn","b_pawn","b_pawn","b_pawn","b_pawn","b_pawn","b_pawn","b_pawn"],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null],
+    ["w_pawn","w_pawn","w_pawn","w_pawn","w_pawn","w_pawn","w_pawn","w_pawn"],
+    ["w_rook","w_knight","w_bishop","w_queen","w_king","w_bishop","w_knight","w_rook"]
+  ];
+}
+
+function render() {
+  const boardDiv = document.getElementById("board");
+  boardDiv.innerHTML = "";
+
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 8; x++) {
+      const cell = document.createElement("div");
+      cell.classList.add("cell");
+      cell.classList.add((x + y) % 2 === 0 ? "white" : "black");
+
+      if (highlights.some(h => h.x === x && h.y === y)) {
+        cell.classList.add("highlight");
+      }
+
+      const piece = board[y][x];
+      if (piece) cell.innerHTML = pieces[piece];
+
+      cell.onclick = () => handleClick(x, y);
+
+      boardDiv.appendChild(cell);
+    }
+  }
+
+  document.getElementById("turn").innerText =
+    turn === "w" ? "White's Turn" : "Black's Turn";
+}
+
+function handleClick(x, y) {
+  const piece = board[y][x];
+
+  if (!selected) {
+    if (piece && piece.startsWith(turn)) {
+      selected = { x, y };
+      highlights = getLegalMoves(x, y); 
+    }
+  } else {
+    const valid = highlights.some(h => h.x === x && h.y === y);
+
+    if (valid) {
+      move(selected.x, selected.y, x, y);
+
+      const opponent = turn === "w" ? "b" : "w";
+
+      if (isCheckmate(opponent)) {
+        render();
+        setTimeout(() => {
+          alert((opponent === "w" ? "White" : "Black") + " is checkmated!");
+        }, 100);
+        return;
+      }
+
+      turn = opponent;
+    }
+
+    selected = null;
+    highlights = [];
+  }
+
+  render();
+}
+
+function move(x1, y1, x2, y2) {
+  board[y2][x2] = board[y1][x1];
+  board[y1][x1] = null;
+}
+
+function inBounds(x, y) {
+  return x >= 0 && x < 8 && y >= 0 && y < 8;
+}
+
+function getMoves(x, y) {
+  const piece = board[y][x];
+  if (!piece) return [];
+
+  const type = piece.split("_")[1];
+  const color = piece[0];
+  let moves = [];
+
+  const directions = {
+    rook: [[1,0],[-1,0],[0,1],[0,-1]],
+    bishop: [[1,1],[-1,1],[1,-1],[-1,-1]],
+    queen: [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]
+  };
+
+  if (type === "pawn") {
+    const dir = color === "w" ? -1 : 1;
+
+    if (inBounds(x, y + dir) && !board[y + dir][x]) {
+      moves.push({x, y: y + dir});
+    }
+
+    if (inBounds(x+1, y+dir) && board[y+dir][x+1] && board[y+dir][x+1][0] !== color) {
+      moves.push({x: x+1, y: y+dir});
+    }
+
+    if (inBounds(x-1, y+dir) && board[y+dir][x-1] && board[y+dir][x-1][0] !== color) {
+      moves.push({x: x-1, y: y+dir});
+    }
+  }
+
+  if (type === "knight") {
+    const steps = [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]];
+    steps.forEach(([dx,dy]) => {
+      const nx = x+dx, ny = y+dy;
+      if (inBounds(nx,ny) && (!board[ny][nx] || board[ny][nx][0] !== color)) {
+        moves.push({x:nx,y:ny});
+      }
+    });
+  }
+
+  if (["rook","bishop","queen"].includes(type)) {
+    directions[type].forEach(([dx,dy]) => {
+      let nx = x+dx, ny = y+dy;
+      while (inBounds(nx,ny)) {
+        if (!board[ny][nx]) {
+          moves.push({x:nx,y:ny});
+        } else {
+          if (board[ny][nx][0] !== color) {
+            moves.push({x:nx,y:ny});
+          }
+          break;
+        }
+        nx += dx;
+        ny += dy;
+      }
+    });
+  }
+
+  if (type === "king") {
+    for (let dx=-1; dx<=1; dx++) {
+      for (let dy=-1; dy<=1; dy++) {
+        if (dx===0 && dy===0) continue;
+        const nx = x+dx, ny = y+dy;
+        if (inBounds(nx,ny) && (!board[ny][nx] || board[ny][nx][0] !== color)) {
+          moves.push({x:nx,y:ny});
+        }
+      }
+    }
+  }
+
+  return moves;
+}
+
+/* ===================== ENGINE PART ===================== */
+
+function findKing(color) {
+  for (let y=0;y<8;y++){
+    for (let x=0;x<8;x++){
+      if (board[y][x] === color + "_king") return {x,y};
+    }
+  }
+}
+
+function isSquareAttacked(x,y,byColor){
+  for (let i=0;i<8;i++){
+    for (let j=0;j<8;j++){
+      const piece = board[i][j];
+      if (piece && piece[0]===byColor){
+        const moves = getMoves(j,i);
+        if (moves.some(m=>m.x===x && m.y===y)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function isCheck(color){
+  const king = findKing(color);
+  const opponent = color==="w"?"b":"w";
+  return isSquareAttacked(king.x,king.y,opponent);
+}
+
+function isCheckSimulated(color,tempBoard){
+
+  function findKingTemp(){
+    for(let y=0;y<8;y++){
+      for(let x=0;x<8;x++){
+        if(tempBoard[y][x]===color+"_king") return {x,y};
+      }
+    }
+  }
+
+  const king = findKingTemp();
+  const opponent = color==="w"?"b":"w";
+
+  for(let y=0;y<8;y++){
+    for(let x=0;x<8;x++){
+      const piece = tempBoard[y][x];
+      if(piece && piece[0]===opponent){
+        const moves = getMoves(x,y);
+        if(moves.some(m=>m.x===king.x && m.y===king.y)){
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function getLegalMoves(x,y){
+  const raw = getMoves(x,y);
+  const piece = board[y][x];
+  const color = piece[0];
+
+  let legal = [];
+
+  raw.forEach(move=>{
+    const temp = JSON.parse(JSON.stringify(board));
+
+    temp[move.y][move.x] = temp[y][x];
+    temp[y][x] = null;
+
+    if(!isCheckSimulated(color,temp)){
+      legal.push(move);
+    }
+  });
+
+  return legal;
+}
+
+function isCheckmate(color){
+  if(!isCheck(color)) return false;
+
+  for(let y=0;y<8;y++){
+    for(let x=0;x<8;x++){
+      const piece = board[y][x];
+      if(piece && piece[0]===color){
+        if(getLegalMoves(x,y).length>0){
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/* ===================== INIT ===================== */
+
+initBoard();
+render();
+</script>
+
+</body>
+</html>
